@@ -1,0 +1,46 @@
+# Headless Service
+# clusterIP: None  → no virtual IP; DNS returns individual Pod IPs directly.
+# Commonly used with StatefulSets so each pod gets a stable DNS entry:
+#   <pod-name>.<service-name>.<namespace>.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-headless-svc
+  namespace: app
+  labels:
+    app: my-app
+spec:
+  clusterIP: None          # This is what makes it "headless"
+  selector:
+    app: my-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+
+---
+# StatefulSet that uses the headless service as its serviceName.
+# Each pod gets a predictable DNS name:
+#   my-app-0.my-headless-svc.default.svc.cluster.local
+#   my-app-1.my-headless-svc.default.svc.cluster.local
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: my-app
+  namespace: app
+spec:
+  serviceName: my-headless-svc   # must match the headless Service name above
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: nginx:1.27
+          ports:
+            - containerPort: 8080

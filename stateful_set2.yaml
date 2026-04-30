@@ -1,0 +1,88 @@
+# Headless service required by the StatefulSet for stable pod DNS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodejs-web-headless
+  namespace: app
+  labels:
+    app: nodejs-web
+spec:
+  clusterIP: None
+  selector:
+    app: nodejs-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+
+---
+# Regular ClusterIP service for normal load-balanced access.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodejs-web-svc
+  namespace: app
+  labels:
+    app: nodejs-web
+spec:
+  selector:
+    app: nodejs-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+
+---
+# StatefulSet — pods get stable identity and persistent storage.
+# Pod DNS pattern: nodejs-web-<ordinal>.nodejs-web-headless.default.svc.cluster.local
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nodejs-web
+  namespace: app
+  labels:
+    app: nodejs-web
+spec:
+  serviceName: nodejs-web-headless   # ties pods to the headless service
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nodejs-web
+  template:
+    metadata:
+      labels:
+        app: nodejs-web
+    spec:
+      containers:
+        - name: nodejs-web
+          image: nodejs-web:1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+  # Each pod gets its own PVC created automatically.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
